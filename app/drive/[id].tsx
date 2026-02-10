@@ -9,6 +9,7 @@ import {
   Share,
   Modal,
   Dimensions,
+  Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -54,6 +55,7 @@ export default function DriveDetailScreen() {
   const [comments, setComments] = useState<Comment[]>([]);
   const [loading, setLoading] = useState(true);
   const [currentPhotoIndex, setCurrentPhotoIndex] = useState(0);
+  const [zoomPhotoIndex, setZoomPhotoIndex] = useState(0);
   const [isSubmittingComment, setIsSubmittingComment] = useState(false);
   const [zoomModalVisible, setZoomModalVisible] = useState(false);
 
@@ -374,9 +376,7 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   backButton: {
-    color: '#000',
-    fontSize: 16,
-    fontWeight: '600',
+    padding: 8,
   },
   header: {
     flexDirection: 'row',

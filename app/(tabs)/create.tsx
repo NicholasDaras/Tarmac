@@ -20,6 +20,7 @@ import { PointsOfInterest, PointOfInterest } from '@/components/PointsOfInterest
 import { supabase } from '@/lib/supabase';
 import * as FileSystem from 'expo-file-system';
 import { decode } from 'base64-arraybuffer';
+import { EncodingType } from 'expo-file-system';
 
 /**
  * Create Drive Screen
@@ -55,7 +56,7 @@ export default function CreateScreen() {
     try {
       // Read file as base64
       const base64 = await FileSystem.readAsStringAsync(uri, {
-        encoding: FileSystem.EncodingType.Base64,
+        encoding: EncodingType.Base64,
       });
 
       // Generate unique filename

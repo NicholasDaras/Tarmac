@@ -61,12 +61,6 @@ export function RouteMap({ routeCoordinates, stops, height = 200, onExpand }: Ro
         }}
         showsUserLocation={false}
         showsMyLocationButton={false}
-        showsCompass={false}
-        showsScale={false}
-        showsTraffic={false}
-        showsBuildings={false}
-        showsIndoors={false}
-        showsPointsOfInterest={false}
         mapType="standard"
       >
         {/* Route Line */}
