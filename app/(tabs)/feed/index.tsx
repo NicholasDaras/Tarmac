@@ -4,6 +4,8 @@ import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase, Drive, Profile } from '../../../lib/supabase';
+import { SocialActionBar } from '../../../components/SocialActionBar';
+import { CommentsModal } from '../../../components/CommentsModal';
 
 /**
  * Drive with author info
@@ -17,7 +19,7 @@ type DriveWithAuthor = Drive & {
 
 /**
  * Feed Screen
- * 
+ *
  * Displays a scrollable list of recent drives from the community.
  * Users can tap a drive to view details.
  */
@@ -26,6 +28,8 @@ export default function FeedScreen() {
   const [drives, setDrives] = useState<DriveWithAuthor[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [selectedDriveId, setSelectedDriveId] = useState<string | null>(null);
+  const [isCommentsVisible, setIsCommentsVisible] = useState(false);
 
   /**
    * Fetch drives from Supabase
@@ -76,6 +80,24 @@ export default function FeedScreen() {
   };
 
   /**
+   * Open comments modal for a drive
+   */
+  const openComments = (driveId: string) => {
+    setSelectedDriveId(driveId);
+    setIsCommentsVisible(true);
+  };
+
+  /**
+   * Close comments modal
+   */
+  const closeComments = () => {
+    setIsCommentsVisible(false);
+    setSelectedDriveId(null);
+    // Refresh drives to get updated comment count
+    fetchDrives();
+  };
+
+  /**
    * Render a single drive card
    */
   const renderDriveCard = ({ item }: { item: DriveWithAuthor }) => {
@@ -83,12 +105,12 @@ export default function FeedScreen() {
     const author = item.profiles;
 
     return (
-      <TouchableOpacity 
-        style={styles.card}
-        onPress={() => router.push(`/drive/${item.id}`)}
-      >
+      <View style={styles.card}>
         {/* Author Header */}
-        <View style={styles.authorHeader}>
+        <TouchableOpacity
+          style={styles.authorHeader}
+          onPress={() => router.push(`/profile/${author.id}`)}
+        >
           {author.profile_photo_url ? (
             <Image source={{ uri: author.profile_photo_url }} style={styles.authorAvatar} />
           ) : (
@@ -97,22 +119,35 @@ export default function FeedScreen() {
             </View>
           )}
           <Text style={styles.authorName}>{author.username}</Text>
-        </View>
+        </TouchableOpacity>
 
-        {/* Drive Photo */}
-        {firstPhoto && (
-          <Image source={{ uri: firstPhoto }} style={styles.driveImage} />
-        )}
+        {/* Drive Photo - Navigate to drive detail on press */}
+        <TouchableOpacity onPress={() => router.push(`/drive/${item.id}`)}>
+          {firstPhoto && (
+            <Image source={{ uri: firstPhoto }} style={styles.driveImage} />
+          )}
+        </TouchableOpacity>
+
+        {/* Social Actions */}
+        <SocialActionBar
+          driveId={item.id}
+          likesCount={item.likes_count}
+          commentsCount={item.comments_count}
+          onCommentPress={() => openComments(item.id)}
+        />
 
         {/* Drive Info */}
-        <View style={styles.driveInfo}>
+        <TouchableOpacity 
+          style={styles.driveInfo}
+          onPress={() => router.push(`/drive/${item.id}`)}
+        >
           <Text style={styles.driveTitle}>{item.title}</Text>
           {item.description && (
             <Text style={styles.driveDescription} numberOfLines={2}>
               {item.description}
             </Text>
           )}
-          
+
           {/* Rating */}
           {item.rating && (
             <View style={styles.ratingContainer}>
@@ -127,18 +162,6 @@ export default function FeedScreen() {
             </View>
           )}
 
-          {/* Engagement Stats */}
-          <View style={styles.statsContainer}>
-            <View style={styles.stat}>
-              <Ionicons name="heart-outline" size={16} color="#666" />
-              <Text style={styles.statText}>{item.likes_count}</Text>
-            </View>
-            <View style={styles.stat}>
-              <Ionicons name="chatbubble-outline" size={16} color="#666" />
-              <Text style={styles.statText}>{item.comments_count}</Text>
-            </View>
-          </View>
-
           {/* Tags */}
           {item.tags && item.tags.length > 0 && (
             <View style={styles.tagsContainer}>
@@ -149,8 +172,8 @@ export default function FeedScreen() {
               ))}
             </View>
           )}
-        </View>
-      </TouchableOpacity>
+        </TouchableOpacity>
+      </View>
     );
   };
 
@@ -180,6 +203,15 @@ export default function FeedScreen() {
           </View>
         }
       />
+
+      {/* Comments Modal */}
+      {selectedDriveId && (
+        <CommentsModal
+          driveId={selectedDriveId}
+          isVisible={isCommentsVisible}
+          onClose={closeComments}
+        />
+      )}
     </SafeAreaView>
   );
 }
@@ -259,20 +291,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 2,
     marginBottom: 8,
-  },
-  statsContainer: {
-    flexDirection: 'row',
-    gap: 16,
-    marginBottom: 12,
-  },
-  stat: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  statText: {
-    fontSize: 14,
-    color: '#666',
   },
   tagsContainer: {
     flexDirection: 'row',
