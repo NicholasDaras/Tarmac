@@ -1,15 +1,9 @@
 import React from 'react';
 import { View, Text, StyleSheet, Dimensions, TouchableOpacity } from 'react-native';
-import Mapbox from '@rnmapbox/maps';
+import MapView, { Marker, Polyline } from 'react-native-maps';
 import { Ionicons } from '@expo/vector-icons';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
-
-// Set Mapbox access token from env
-const MAPBOX_TOKEN = process.env.EXPO_PUBLIC_MAPBOX_TOKEN;
-if (MAPBOX_TOKEN) {
-  Mapbox.setAccessToken(MAPBOX_TOKEN);
-}
 
 interface MapPoint {
   latitude: number;
@@ -26,18 +20,9 @@ interface RouteMapProps {
 /**
  * RouteMap Component
  * 
- * Displays a Mapbox map with route line and stop markers
+ * Displays a Google Maps with route line and stop markers
  */
 export function RouteMap({ routeCoordinates, stops, height = 200, onExpand }: RouteMapProps) {
-  if (!MAPBOX_TOKEN) {
-    return (
-      <View style={[styles.container, { height }, styles.errorContainer]}>
-        <Ionicons name="map-outline" size={32} color="#ccc" />
-        <Text style={styles.errorText}>Mapbox token not configured</Text>
-      </View>
-    );
-  }
-
   // Filter valid coordinates
   const validCoordinates = (routeCoordinates || [])
     .filter((point): point is MapPoint => 
@@ -61,64 +46,55 @@ export function RouteMap({ routeCoordinates, stops, height = 200, onExpand }: Ro
   // Calculate bounds for zoom
   const latitudes = allPoints.map(p => p.latitude);
   const longitudes = allPoints.map(p => p.longitude);
-  const latDelta = Math.max(...latitudes) - Math.min(...latitudes) || 0.1;
-  const lngDelta = Math.max(...longitudes) - Math.min(...longitudes) || 0.1;
+  const latDelta = Math.max(0.02, Math.max(...latitudes) - Math.min(...latitudes) || 0.1);
+  const lngDelta = Math.max(0.02, Math.max(...longitudes) - Math.min(...longitudes) || 0.1);
 
   return (
     <View style={[styles.container, { height }]}>
-      <Mapbox.MapView
+      <MapView
         style={styles.map}
-        styleURL="mapbox://styles/mapbox/light-v11"
-        zoomEnabled={true}
-        scrollEnabled={true}
-        rotateEnabled={false}
-        pitchEnabled={false}
+        initialRegion={{
+          latitude: centerLat,
+          longitude: centerLng,
+          latitudeDelta: latDelta,
+          longitudeDelta: lngDelta,
+        }}
+        showsUserLocation={false}
+        showsMyLocationButton={false}
+        showsCompass={false}
+        showsScale={false}
+        showsTraffic={false}
+        showsBuildings={false}
+        showsIndoors={false}
+        showsPointsOfInterest={false}
+        mapType="standard"
       >
-        <Mapbox.Camera
-          centerCoordinate={[centerLng, centerLat]}
-          zoomLevel={12}
-          animationMode="moveTo"
-        />
-
         {/* Route Line */}
         {validCoordinates.length > 1 && (
-          <Mapbox.ShapeSource
-            id="routeSource"
-            shape={{
-              type: 'Feature',
-              properties: {},
-              geometry: {
-                type: 'LineString',
-                coordinates: validCoordinates.map(p => [p.longitude, p.latitude]),
-              },
-            }}
-          >
-            <Mapbox.LineLayer
-              id="routeLine"
-              style={{
-                lineColor: '#FF0000',
-                lineWidth: 4,
-                lineCap: 'round',
-                lineJoin: 'round',
-              }}
-            />
-          </Mapbox.ShapeSource>
+          <Polyline
+            coordinates={validCoordinates}
+            strokeColor="#FF0000"
+            strokeWidth={4}
+          />
         )}
 
         {/* Stop Markers */}
         {validStops.map((stop, index) => (
-          <Mapbox.PointAnnotation
+          <Marker
             key={`stop-${index}`}
-            id={`stop-${index}`}
-            coordinate={[stop.longitude, stop.latitude]}
+            coordinate={{
+              latitude: stop.latitude,
+              longitude: stop.longitude,
+            }}
+            title={stop.name}
+            description={`Stop ${index + 1}`}
           >
             <View style={styles.marker}>
               <Text style={styles.markerText}>{index + 1}</Text>
             </View>
-            <Mapbox.Callout title={stop.name} />
-          </Mapbox.PointAnnotation>
+          </Marker>
         ))}
-      </Mapbox.MapView>
+      </MapView>
 
       {/* Expand Button */}
       {onExpand && (
@@ -137,16 +113,6 @@ const styles = StyleSheet.create({
   },
   map: {
     flex: 1,
-  },
-  errorContainer: {
-    backgroundColor: '#f5f5f5',
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 8,
-  },
-  errorText: {
-    color: '#999',
-    fontSize: 14,
   },
   marker: {
     width: 28,
