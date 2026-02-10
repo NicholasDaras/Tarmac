@@ -9,6 +9,7 @@ import { useAuth } from '../../lib/auth-context';
  */
 const tabIcons: Record<string, { active: string; inactive: string }> = {
   feed: { active: 'home', inactive: 'home-outline' },
+  search: { active: 'search', inactive: 'search-outline' },
   create: { active: 'add-circle', inactive: 'add-circle-outline' },
   events: { active: 'calendar', inactive: 'calendar-outline' },
   profile: { active: 'person', inactive: 'person-outline' },
@@ -51,6 +52,12 @@ export default function TabLayout() {
         name="feed"
         options={{
           title: 'Feed',
+        }}
+      />
+      <Tabs.Screen
+        name="search"
+        options={{
+          title: 'Search',
         }}
       />
       <Tabs.Screen

@@ -19,6 +19,7 @@ import { DriveHeader } from '@/components/DriveHeader';
 import { EngagementBar } from '@/components/EngagementBar';
 import { StopsList } from '@/components/StopsList';
 import { CommentsSection } from '@/components/CommentsSection';
+import { RouteMap } from '@/components/RouteMap';
 import { supabase, Drive, Profile, DrivePhoto, DriveStop } from '@/lib/supabase';
 import { useAuth } from '@/lib/auth-context';
 
@@ -291,6 +292,21 @@ export default function DriveDetailScreen() {
         {/* Stops List */}
         <StopsList stops={sortedStops} />
 
+        {/* Route Map */}
+        {sortedStops.length > 0 && (
+          <View style={styles.mapSection}>
+            <Text style={styles.sectionTitle}>Route</Text>
+            <RouteMap
+              stops={sortedStops.map(s => ({ 
+                latitude: s.latitude, 
+                longitude: s.longitude, 
+                name: s.name 
+              }))}
+              height={250}
+            />
+          </View>
+        )}
+
         {/* Comments Section */}
         <CommentsSection
           comments={comments}
@@ -312,7 +328,7 @@ export default function DriveDetailScreen() {
             style={styles.closeButton}
             onPress={() => setZoomModalVisible(false)}
           >
-            <Ionicons name="close" size={28" color="#fff" />
+            <Ionicons name="close" size={28} color="#fff" />
           </TouchableOpacity>
           
           <ScrollView
@@ -396,5 +412,16 @@ const styles = StyleSheet.create({
   zoomImage: {
     width: SCREEN_WIDTH,
     height: '100%',
+  },
+  mapSection: {
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    paddingHorizontal: 16,
+    marginBottom: 12,
   },
 });
