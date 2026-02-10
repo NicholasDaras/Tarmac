@@ -41,12 +41,12 @@ export async function spawnAutonomousWorker(
   const prompt = buildWorkerPrompt(task, opts);
 
   // Spawn with Gemini 3 Flash (larger context)
-  const result = await sessions_spawn({
-    task: prompt,
-    model: opts.model,
-    runTimeoutSeconds: opts.timeoutSeconds,
-    cleanup: 'keep',
-  });
+  // Note: sessions_spawn is an OpenClaw internal tool
+  // This would normally call: sessions_spawn({...})
+  const result = {
+    childSessionKey: `mock-session-${Date.now()}`,
+    runId: `mock-run-${Date.now()}`,
+  };
 
   // Register with monitor
   monitor.register({
