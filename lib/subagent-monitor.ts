@@ -27,7 +27,7 @@ interface SubAgentStatus {
 
 class SubAgentMonitor extends EventEmitter {
   private agents: Map<string, SubAgentStatus> = new Map();
-  private checkInterval: NodeJS.Timeout | null = null;
+  private checkInterval: ReturnType<typeof setInterval> | null = null;
 
   constructor(private checkIntervalMs: number = 120000) { // 2 min default
     super();
@@ -128,8 +128,9 @@ class SubAgentMonitor extends EventEmitter {
    * Get status summary
    */
   getSummary() {
-    const summary = {
+    const summary: Record<string, number> = {
       total: this.agents.size,
+      idle: 0,
       working: 0,
       completed: 0,
       failed: 0,

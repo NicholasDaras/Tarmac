@@ -9,7 +9,8 @@
  * 5. Auto-retry on truncation
  */
 
-import { sessions_spawn } from '../tools/sessions';
+// Note: sessions_spawn is an OpenClaw tool, not available in this context
+// import { sessions_spawn } from '../tools/sessions';
 import { monitor } from './subagent-monitor';
 import { Task } from './task-decomposition';
 
