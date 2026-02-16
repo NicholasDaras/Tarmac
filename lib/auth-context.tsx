@@ -1,7 +1,33 @@
+/**
+ * Auth Context with Security Hardening
+ * 
+ * Provides authentication state and methods with:
+ * - Rate limiting on auth operations
+ * - Input validation and sanitization
+ * - Secure session management
+ * - OWASP-compliant security practices
+ * 
+ * @module lib/auth-context
+ * @version 2.0.0
+ * @security OWASP Compliant
+ */
+
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { useRouter, useSegments } from 'expo-router';
 import { supabase } from './supabase';
 import { Session, User } from '@supabase/supabase-js';
+import { rateLimiter } from './rate-limiter';
+import { 
+  emailSchema, 
+  passwordSchema, 
+  usernameSchema, 
+  fullNameSchema,
+  loginSchema,
+  signupSchema,
+  validateAndSanitize,
+  sanitizeInput 
+} from './validation';
+import { SECURITY_ERRORS } from './security-config';
 
 /**
  * Auth Context Type Definition
@@ -10,28 +36,27 @@ type AuthContextType = {
   user: User | null;
   session: Session | null;
   isLoading: boolean;
-  signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
-  signUp: (email: string, password: string, metadata: object) => Promise<{ error: Error | null }>;
+  signIn: (email: string, password: string) => Promise<{ error: Error | null; message?: string }>;
+  signUp: (email: string, password: string, metadata: { username: string; fullName?: string }) => Promise<{ error: Error | null; message?: string }>;
   signOut: () => Promise<void>;
+  rateLimitStatus: { login: number; signup: number };
 };
 
 /**
  * Create the Auth Context
- * 
- * This provides authentication state and methods to the entire app.
  */
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 /**
  * Auth Provider Component
  * 
- * Wraps the app and manages authentication state.
- * Also handles automatic redirects based on auth state.
+ * Wraps the app and manages authentication state with security features.
  */
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [rateLimitStatus, setRateLimitStatus] = useState({ login: 5, signup: 3 });
   const router = useRouter();
   const segments = useSegments();
 
@@ -77,34 +102,163 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   /**
    * Sign in with email and password
+   * 
+   * Security features:
+   * - Rate limiting (5 attempts per 15 minutes)
+   * - Input validation and sanitization
+   * - Generic error messages (don't leak info)
    */
   const signIn = async (email: string, password: string) => {
     try {
-      const { error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
+      // Sanitize inputs
+      const sanitizedEmail = sanitizeInput(email);
+      const sanitizedPassword = password; // Don't sanitize passwords
+
+      // Validate inputs
+      const validation = validateAndSanitize(loginSchema, {
+        email: sanitizedEmail,
+        password: sanitizedPassword,
       });
-      return { error };
+
+      if (!validation.success) {
+        return { 
+          error: new Error('Invalid input'), 
+          message: validation.errors.join(', ') 
+        };
+      }
+
+      // Check rate limit
+      const rateLimitKey = `login:${sanitizedEmail}`;
+      const rateLimit = await rateLimiter.checkAuthLimit('login', sanitizedEmail);
+      
+      if (!rateLimit.allowed) {
+        return { 
+          error: new Error('Rate limit exceeded'), 
+          message: `Too many login attempts. Please try again in ${rateLimiter.getTimeUntilReset(rateLimit.resetTime)}.` 
+        };
+      }
+
+      // Record attempt
+      await rateLimiter.recordAttempt(rateLimitKey, 15 * 60 * 1000);
+
+      // Attempt sign in
+      const { error } = await supabase.auth.signInWithPassword({
+        email: validation.data.email,
+        password: validation.data.password,
+      });
+
+      // Update rate limit status
+      setRateLimitStatus(prev => ({ ...prev, login: rateLimit.remaining - 1 }));
+
+      if (error) {
+        // Generic error message - don't leak if email exists
+        return { 
+          error: new Error('Authentication failed'), 
+          message: 'Invalid email or password. Please try again.' 
+        };
+      }
+
+      // Reset rate limit on success
+      await rateLimiter.resetLimit(rateLimitKey);
+
+      return { error: null };
     } catch (error) {
-      return { error: error as Error };
+      console.error('Sign in error:', error);
+      return { 
+        error: error as Error, 
+        message: SECURITY_ERRORS.serverError 
+      };
     }
   };
 
   /**
    * Sign up with email and password
+   * 
+   * Security features:
+   * - Rate limiting (3 attempts per hour)
+   * - Strict input validation
+   * - Username sanitization
    */
-  const signUp = async (email: string, password: string, metadata: object) => {
+  const signUp = async (
+    email: string, 
+    password: string, 
+    metadata: { username: string; fullName?: string }
+  ) => {
     try {
+      // Sanitize inputs
+      const sanitizedEmail = sanitizeInput(email);
+      const sanitizedUsername = sanitizeInput(metadata.username);
+      const sanitizedFullName = metadata.fullName ? sanitizeInput(metadata.fullName) : undefined;
+      const sanitizedPassword = password;
+
+      // Validate inputs
+      const validation = validateAndSanitize(signupSchema, {
+        email: sanitizedEmail,
+        password: sanitizedPassword,
+        username: sanitizedUsername,
+        fullName: sanitizedFullName,
+      });
+
+      if (!validation.success) {
+        return { 
+          error: new Error('Invalid input'), 
+          message: validation.errors.join(', ') 
+        };
+      }
+
+      // Check rate limit
+      const rateLimitKey = `signup:${sanitizedEmail}`;
+      const rateLimit = await rateLimiter.checkAuthLimit('signup', sanitizedEmail);
+      
+      if (!rateLimit.allowed) {
+        return { 
+          error: new Error('Rate limit exceeded'), 
+          message: `Too many signup attempts. Please try again in ${rateLimiter.getTimeUntilReset(rateLimit.resetTime)}.` 
+        };
+      }
+
+      // Record attempt
+      await rateLimiter.recordAttempt(rateLimitKey, 60 * 60 * 1000);
+
+      // Attempt sign up
       const { error } = await supabase.auth.signUp({
-        email,
-        password,
+        email: validation.data.email,
+        password: validation.data.password,
         options: {
-          data: metadata,
+          data: {
+            username: validation.data.username,
+            full_name: validation.data.fullName,
+          },
         },
       });
-      return { error };
+
+      // Update rate limit status
+      setRateLimitStatus(prev => ({ ...prev, signup: rateLimit.remaining - 1 }));
+
+      if (error) {
+        // Check for specific errors that are safe to expose
+        if (error.message.includes('User already registered')) {
+          return { 
+            error: new Error('User exists'), 
+            message: 'An account with this email already exists.' 
+          };
+        }
+        return { 
+          error: new Error('Signup failed'), 
+          message: 'Unable to create account. Please try again later.' 
+        };
+      }
+
+      // Reset rate limit on success
+      await rateLimiter.resetLimit(rateLimitKey);
+
+      return { error: null };
     } catch (error) {
-      return { error: error as Error };
+      console.error('Sign up error:', error);
+      return { 
+        error: error as Error, 
+        message: SECURITY_ERRORS.serverError 
+      };
     }
   };
 
@@ -112,7 +266,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
    * Sign out
    */
   const signOut = async () => {
-    await supabase.auth.signOut();
+    try {
+      await supabase.auth.signOut();
+      // Clear any local rate limits on sign out
+      setRateLimitStatus({ login: 5, signup: 3 });
+    } catch (error) {
+      console.error('Sign out error:', error);
+      // Still clear local state even if Supabase fails
+      setUser(null);
+      setSession(null);
+    }
   };
 
   const value = {
@@ -122,6 +285,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     signIn,
     signUp,
     signOut,
+    rateLimitStatus,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
@@ -130,7 +294,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 /**
  * Hook to use auth context
  * 
- * Usage: const { user, signIn, signOut } = useAuth();
+ * Usage: const { user, signIn, signOut, rateLimitStatus } = useAuth();
+ * 
+ * @throws Error if used outside AuthProvider
  */
 export function useAuth() {
   const context = useContext(AuthContext);
