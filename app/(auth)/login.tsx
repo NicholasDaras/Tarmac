@@ -31,10 +31,10 @@ export default function LoginScreen() {
     setLoading(true);
     
     try {
-      const { error } = await signIn(email, password);
+      const { error, message } = await signIn(email, password);
       
       if (error) {
-        Alert.alert('Login Failed', error.message);
+        Alert.alert('Login Failed', message || error.message);
       }
       // On success, auth context will automatically redirect
     } catch (err) {
@@ -72,6 +72,8 @@ export default function LoginScreen() {
           value={password}
           onChangeText={setPassword}
           secureTextEntry
+          textContentType="none"
+          autoComplete="off"
           editable={!loading}
         />
 
@@ -87,6 +89,11 @@ export default function LoginScreen() {
           )}
         </TouchableOpacity>
       </View>
+
+      {/* Forgot Password */}
+      <TouchableOpacity style={styles.forgotLink} onPress={() => router.push('/(auth)/forgot-password')}>
+        <Text style={styles.forgotText}>Forgot Password?</Text>
+      </TouchableOpacity>
 
       {/* Footer */}
       <View style={styles.footer}>
@@ -158,5 +165,13 @@ const styles = StyleSheet.create({
   link: {
     color: '#000',
     fontWeight: '600',
+  },
+  forgotLink: {
+    alignItems: 'center',
+    marginTop: 16,
+  },
+  forgotText: {
+    color: '#666',
+    fontSize: 14,
   },
 });

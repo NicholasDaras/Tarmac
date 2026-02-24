@@ -7,7 +7,6 @@ import {
   TextInput, 
   TouchableOpacity, 
   KeyboardAvoidingView, 
-  Platform,
   Image,
   ActivityIndicator,
   Modal,
@@ -186,8 +185,8 @@ export function CommentsModal({ driveId, isVisible, onClose }: CommentsModalProp
 
         {/* Input Area */}
         <KeyboardAvoidingView 
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          keyboardVerticalOffset={Platform.OS === 'ios' ? 88 : 0}
+          behavior="padding"
+          keyboardVerticalOffset={88}
         >
           <View style={styles.inputContainer}>
             <TextInput

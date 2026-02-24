@@ -36,21 +36,21 @@ export default function SignupScreen() {
       return;
     }
 
-    if (password.length < 6) {
-      Alert.alert('Error', 'Password must be at least 6 characters');
+    if (password.length < 8) {
+      Alert.alert('Error', 'Password must be at least 8 characters');
       return;
     }
 
     setLoading(true);
     
     try {
-      const { error } = await signUp(email, password, {
+      const { error, message } = await signUp(email, password, {
         username,
         full_name: fullName,
       });
       
       if (error) {
-        Alert.alert('Signup Failed', error.message);
+        Alert.alert('Signup Failed', message || error.message);
       } else {
         Alert.alert(
           'Success!',
@@ -112,6 +112,8 @@ export default function SignupScreen() {
           value={password}
           onChangeText={setPassword}
           secureTextEntry
+          textContentType="none"
+          autoComplete="off"
           editable={!loading}
         />
 
@@ -122,6 +124,8 @@ export default function SignupScreen() {
           value={confirmPassword}
           onChangeText={setConfirmPassword}
           secureTextEntry
+          textContentType="none"
+          autoComplete="off"
           editable={!loading}
         />
 

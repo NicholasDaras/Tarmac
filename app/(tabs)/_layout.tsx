@@ -55,9 +55,9 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
-        name="search"
+        name="events"
         options={{
-          title: 'Search',
+          title: 'Events',
         }}
       />
       <Tabs.Screen
@@ -67,9 +67,9 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
-        name="events"
+        name="search"
         options={{
-          title: 'Events',
+          title: 'Search',
         }}
       />
       <Tabs.Screen

@@ -20,7 +20,7 @@ interface RouteMapProps {
 /**
  * RouteMap Component
  * 
- * Displays a Google Maps with route line and stop markers
+ * Displays an Apple Maps view with route line and stop markers
  */
 export function RouteMap({ routeCoordinates, stops, height = 200, onExpand }: RouteMapProps) {
   // Filter valid coordinates
