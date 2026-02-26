@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, FlatList, Image, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, TextInput, TouchableOpacity, FlatList, Image, ActivityIndicator, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { ReportModal } from './ReportModal';
 import { formatDistanceToNow } from 'date-fns';
 
 interface Profile {
@@ -35,6 +36,7 @@ export function CommentsSection({
   isSubmitting,
 }: CommentsSectionProps) {
   const [newComment, setNewComment] = useState('');
+  const [reportTargetId, setReportTargetId] = useState<string | null>(null);
 
   const handleSubmit = async () => {
     if (!newComment.trim()) return;
@@ -42,7 +44,20 @@ export function CommentsSection({
     setNewComment('');
   };
 
+  const handleLongPressComment = (item: Comment) => {
+    if (item.profiles.id === currentUserId) return; // own comment
+    Alert.alert('Comment Options', undefined, [
+      { text: 'Report Comment', style: 'destructive', onPress: () => setReportTargetId(item.id) },
+      { text: 'Cancel', style: 'cancel' },
+    ]);
+  };
+
   const renderComment = ({ item }: { item: Comment }) => (
+    <TouchableOpacity
+      onLongPress={() => handleLongPressComment(item)}
+      delayLongPress={400}
+      activeOpacity={1}
+    >
     <View style={styles.commentItem}>
       {item.profiles.profile_photo_url ? (
         <Image source={{ uri: item.profiles.profile_photo_url }} style={styles.avatar} />
@@ -61,6 +76,7 @@ export function CommentsSection({
         <Text style={styles.commentText}>{item.text}</Text>
       </View>
     </View>
+    </TouchableOpacity>
   );
 
   return (
@@ -80,6 +96,16 @@ export function CommentsSection({
           </View>
         }
       />
+
+      {/* Report Modal */}
+      {reportTargetId && (
+        <ReportModal
+          visible={!!reportTargetId}
+          onClose={() => setReportTargetId(null)}
+          targetType="comment"
+          targetId={reportTargetId}
+        />
+      )}
 
       {/* Add Comment Input */}
       {currentUserId && (

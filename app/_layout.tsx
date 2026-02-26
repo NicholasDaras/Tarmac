@@ -4,8 +4,11 @@ import { useEffect } from 'react';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import * as Linking from 'expo-linking';
+import * as Notifications from 'expo-notifications';
 import { AuthProvider } from '../lib/auth-context';
 import { SocialProvider } from '../lib/social-context';
+import { ModerationProvider } from '../lib/moderation-context';
+import { NotificationsProvider } from '../lib/notifications-context';
 import { supabase } from '../lib/supabase';
 
 function DeepLinkHandler() {
@@ -41,7 +44,18 @@ function DeepLinkHandler() {
 
     // App already open, deep link received
     const subscription = Linking.addEventListener('url', ({ url }) => handleUrl(url));
-    return () => subscription.remove();
+    // Handle notification taps (navigate to the relevant screen)
+    const notifSub = Notifications.addNotificationResponseReceivedListener(response => {
+      const data = response.notification.request.content.data as { path?: string } | undefined;
+      if (data?.path) {
+        router.push(data.path as any);
+      }
+    });
+
+    return () => {
+      subscription.remove();
+      notifSub.remove();
+    };
   }, []);
 
   return null;
@@ -50,13 +64,17 @@ function DeepLinkHandler() {
 export default function RootLayout() {
   return (
     <SafeAreaProvider>
+      <NotificationsProvider>
       <AuthProvider>
         <SocialProvider>
+          <ModerationProvider>
           <StatusBar style="dark" />
           <DeepLinkHandler />
           <Slot />
+          </ModerationProvider>
         </SocialProvider>
       </AuthProvider>
+      </NotificationsProvider>
     </SafeAreaProvider>
   );
 }

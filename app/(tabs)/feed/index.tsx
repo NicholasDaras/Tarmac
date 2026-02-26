@@ -5,8 +5,10 @@ import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase, Drive, Profile } from '../../../lib/supabase';
+import { useModeration } from '../../../lib/moderation-context';
 import { SocialActionBar } from '../../../components/SocialActionBar';
 import { CommentsModal } from '../../../components/CommentsModal';
+import { PendingUploadBanner } from '../../../components/PendingUploadBanner';
 
 const PAGE_SIZE = 15;
 
@@ -42,6 +44,7 @@ export default function FeedScreen() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
   const [selectedDriveId, setSelectedDriveId] = useState<string | null>(null);
+  const { blockedUserIds } = useModeration();
   const [isCommentsVisible, setIsCommentsVisible] = useState(false);
   const cursorRef = useRef<string | null>(null); // created_at of last item
 
@@ -58,6 +61,11 @@ export default function FeedScreen() {
         `)
         .order('created_at', { ascending: false })
         .limit(PAGE_SIZE);
+
+      // Filter out blocked users
+      if (blockedUserIds.length > 0) {
+        query = query.not('user_id', 'in', `(${blockedUserIds.join(',')})`);
+      }
 
       if (cursor) {
         query = query.lt('created_at', cursor);
@@ -236,6 +244,7 @@ export default function FeedScreen() {
           renderItem={renderDriveCard}
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.listContent}
+          ListHeaderComponent={<PendingUploadBanner onSuccess={() => fetchDrives(null)} />}
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
           }

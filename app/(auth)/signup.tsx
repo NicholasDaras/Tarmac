@@ -46,7 +46,7 @@ export default function SignupScreen() {
     try {
       const { error, message } = await signUp(email, password, {
         username,
-        full_name: fullName,
+        fullName: fullName,
       });
       
       if (error) {

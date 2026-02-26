@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Animated } from 'react-native';
 import { useSocial } from './social-context';
+import * as Haptics from 'expo-haptics';
 
 /**
  * Hook for managing drive social interactions
@@ -60,6 +61,7 @@ export function useDriveInteractions(driveId: string) {
     setIsLiked(newLikedState);
     if (newLikedState) {
       animateHeart();
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     }
 
     // API call
@@ -82,6 +84,7 @@ export function useDriveInteractions(driveId: string) {
     
     // Optimistic update
     setIsSaved(newSavedState);
+    if (newSavedState) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
 
     // API call
     const { error } = newSavedState

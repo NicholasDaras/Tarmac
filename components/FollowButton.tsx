@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { TouchableOpacity, Text, StyleSheet, ActivityIndicator } from 'react-native';
 import { useSocial } from '../lib/social-context';
+import * as Haptics from 'expo-haptics';
 
 /**
  * Props for FollowButton
@@ -46,6 +47,7 @@ export function FollowButton({ userId, onFollowChange }: FollowButtonProps) {
     // Optimistic update
     setFollowing(newFollowingState);
     onFollowChange?.(newFollowingState);
+    if (newFollowingState) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
     // API call
     const { error } = newFollowingState

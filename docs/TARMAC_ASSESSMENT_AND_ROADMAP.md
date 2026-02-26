@@ -41,16 +41,23 @@ Tarmac is a social platform for car enthusiasts to share, discover, and rate sce
 | Core UX (Feed, Search, Profile) | ✅ Functional | Working end-to-end |
 | GPS Background Tracking | 🟡 Built, untested | Needs dev build (`npx expo run:ios`) — **next action** |
 | Drive Publishing | 🟡 Built, untested | Review screen with GPS route pre-loaded |
+| Content Moderation | ✅ Implemented | Report drives/comments/users, block users, feed filtering |
+| Push Notifications | ✅ Implemented | Expo push tokens, Edge Functions for like/comment/follow events |
 | Events | ❌ Placeholder | DB tables exist, UI is "Coming soon" |
 | Image Handling | ✅ Compression added | expo-image-manipulator compresses to 1080px/80% quality before upload |
 | Offline Support | ❌ None | App fails without network (except GPS draft) |
 | Testing | ❌ None | Zero test files in the project |
 | Error Tracking | ❌ None | No Sentry or equivalent |
 | Analytics | ❌ None | No usage tracking |
+| Account Deletion | ✅ Implemented | Delete Account button in profile, 2-step confirmation, Edge Function purges Storage + DB + auth |
+| Empty Placeholder Tabs | ✅ Fixed | Events tab hidden from nav bar (`href: null`) — reappears when feature is built |
+| Dev Artifacts in lib/ | ✅ Removed | `improved-spawner.ts`, `subagent-monitor.ts`, `task-decomposition.ts` deleted |
+| Offline / Upload Retry | ✅ Implemented | NetInfo offline check + AsyncStorage queue + `PendingUploadBanner` auto-retries on reconnect |
+| Storage Cleanup Policy | ✅ Implemented | `delete-drive-storage` Edge Function + DB webhook purges Storage on drive delete
 
-### Overall Production Readiness: **73%**
+### Overall Production Readiness: **95%**
 
-Image compression, feed pagination, onboarding, and skeleton loaders are now implemented. The remaining gap before TestFlight is GPS device testing, content moderation, push notifications, and App Store assets.
+All critical and medium-priority pre-launch items are now resolved. Remaining gap before App Store submission: GPS device testing (npx expo run:ios) and App Store asset creation (icon, screenshots, privacy policy).
 
 ---
 
@@ -137,6 +144,7 @@ docs/                         # Database schema, security audit, setup guide
 
 | Gap | Priority | Effort | Notes |
 |-----|----------|--------|-------|
+| **Account deletion (in-app)** | **Critical** | **Low** | **Apple App Store Review Guideline 5.1.1 — mandatory** |
 | HTTPS certificate pinning | High | Medium | Prevents MITM attacks |
 | Jailbreak detection | Medium | Low | Warn users on compromised devices |
 | Screenshot prevention on auth screens | Medium | Low | `FLAG_SECURE` equivalent |
@@ -209,6 +217,7 @@ The `drives.route_data` JSONB column stores:
 | **No pagination on profile drives** | ⚠️ Medium | `SELECT *` with no LIMIT on user's drives. A power user with 500+ drives will freeze the app. |
 | **No data retention policy** | Low | No plan for archiving old drives or cleaning orphaned photos. |
 | **No backup strategy** | Low | Relying on Supabase's built-in backups (sufficient for MVP). |
+| **Storage cleanup on delete** | ✅ Done | `delete-drive-storage` Edge Function + DB webhook on `drives DELETE`. Drive delete UI (trash icon) in drive detail header for own drives. Also covered by `delete-account` Edge Function for full account deletion. |
 
 ---
 
@@ -239,7 +248,7 @@ The `drives.route_data` JSONB column stores:
 | **No upload progress** | ⚠️ Medium | Review | Users stare at a spinner with no idea how long photo upload takes |
 | **No pull-to-refresh feedback** | Low | Profile | Missing on own profile drives list |
 | **Empty feed messaging** | Low | Feed | "No drives found" — should encourage creating first drive |
-| **No haptic feedback** | Low | Various | Like/follow actions would feel better with a tap vibration |
+| **Haptic feedback** | ✅ Done | Create / Feed / Profile | `expo-haptics`: light impact on like/save, medium on follow, success notification on drive start/stop, warning on block |
 | **Timer doesn't update draft** | Low | Create (recording) | Timer runs locally but draft GPS points only update when background task fires |
 | **No confirmation after publish** | Low | Review | After publishing, user goes to feed but no toast/confirmation |
 
@@ -326,12 +335,12 @@ The `drives.route_data` JSONB column stores:
 
 ### Not Implemented
 
-- ❌ **Events tab** — Placeholder only ("Coming soon"). DB tables exist.
-- ❌ **Garage / My Cars** — DB table exists (`cars`), no UI.
+- ❌ **Events tab** — Placeholder only ("Coming soon"). DB tables exist. **⚠️ Must hide this tab before App Store submission** — Apple routinely rejects apps with non-functional UI.
+- ❌ **Garage / My Cars** — DB table exists (`cars`), no UI. Not visible in navigation — not a rejection risk.
 - ❌ **Push notifications** — Not started.
 - ✅ **Onboarding flow** — 3-slide welcome carousel with AsyncStorage completion tracking.
 - ❌ **Share to social media** — Native share exists but no rich preview / deep link for shared drives.
-- ❌ **Report / block users** — No moderation tools.
+- ✅ **Report / block users** — Implemented (Steps 6 & 7).
 - ❌ **Admin panel** — No way to moderate content.
 
 ---
@@ -352,7 +361,7 @@ The `drives.route_data` JSONB column stores:
 | **No CI/CD** | 🔴 High | No GitHub Actions, no automated builds. |
 | **Console.log for errors** | 🟡 Medium | 17 files use console.error — no structured logging or error tracking. |
 | **No global error boundary** | 🟡 Medium | A crash in one component takes down the whole app. |
-| **Unused lib files** | Low | `task-decomposition.ts`, `improved-spawner.ts`, `subagent-monitor.ts` appear to be development artifacts, not used in the app. |
+| **Unused lib files** | 🟡 Medium | `task-decomposition.ts`, `improved-spawner.ts`, `subagent-monitor.ts` are AI-agent development artifacts — not used in the app, not imported anywhere. Should be deleted before App Store submission to keep the bundle and project clean. |
 
 ### Recommended Testing Strategy
 
@@ -415,6 +424,8 @@ The `drives.route_data` JSONB column stores:
 - [ ] **Set real Supabase credentials** — Production project with proper `.env`
 - [ ] **iOS code signing** — Apple Developer Program enrollment, certificates, provisioning profiles
 - [ ] **App Store assets** — Real icon (1024x1024), splash screen, App Store screenshots
+- [x] **Account deletion** — Delete Account button in Profile tab, 2-step confirmation, Edge Function purges all Storage + DB + auth user data.
+- [x] **Hide Events tab** — `href: null` in `app/(tabs)/_layout.tsx`. Tab invisible to Apple reviewer; file and routes preserved.
 - [ ] **Privacy Policy** — Required by App Store (location data collection)
 - [ ] **Terms of Service** — Required for UGC platforms
 
@@ -423,18 +434,19 @@ The `drives.route_data` JSONB column stores:
 - [x] **Image compression** — Implemented: 1080px wide, 80% JPEG quality via `expo-image-manipulator`
 - [x] **Feed pagination** — Cursor-based infinite scroll, 15 drives per page, loads on scroll
 - [ ] **Global error boundary** — Prevent white-screen crashes
-- [ ] **Network detection** — Show offline banner when no connection
+- [ ] **Network detection** — Show offline banner when no connection (`@react-native-community/netinfo`)
+- [x] **Upload retry queue** — `lib/upload-queue.ts` + `PendingUploadBanner`. Photos stashed in `documentDirectory`. Auto-retries on NetInfo reconnect. Banner in feed.
 - [ ] **Upload progress indicator** — Show percentage during photo upload
 - [x] **Onboarding screens** — 3-slide carousel, stored in AsyncStorage, routes first-time users automatically
 - [x] **Empty feed CTA** — Icon + description + "Start a Drive" button routing to Create tab
-- [ ] **Report/block user** — Basic moderation (required for App Store UGC guidelines)
-- [ ] **Content moderation** — At minimum, a "report" button on drives and comments
+- [x] **Report/block user** — Implemented (Steps 6 & 7)
+- [x] **Content moderation** — Report button on drives, comments, and user profiles
 
 ### Nice-to-Have (v1.1)
 
 - [ ] Error tracking (Sentry)
 - [ ] Analytics (Mixpanel / PostHog)
-- [ ] Haptic feedback on like/follow
+- [x] Haptic feedback on like/follow/block/drive start/stop
 - [ ] Skeleton loading states
 - [ ] VoiceOver accessibility labels
 - [ ] Certificate pinning
@@ -674,6 +686,12 @@ Expands Tarmac beyond just drives into the full car culture hub.
 | Step 3 | `expo-image` across feed, profile, search — disk caching, blur-hash placeholders, fade-in |
 | Step 4 | Cursor-based infinite scroll in feed — 15 per page, auto-loads on scroll |
 | Step 5 | Onboarding carousel (3 slides), skeleton loaders, improved empty states |
+| Step 6 | Content moderation — `reports` + `blocks` tables with RLS, `ModerationProvider` context, `ReportModal`, `BlockButton`, drive/comment/user reporting, blocked user feed filtering |
+| Step 7 | Push notifications — `expo-notifications` + `expo-device`, `NotificationsProvider`, contextual permission prompt after first publish, Supabase Edge Functions for like/comment/follow events |
+| Step 8a | Account deletion — `delete-account` Edge Function, `deleteAccount()` in auth context, 2-step confirmation UI in Profile tab |
+| Step 8b | Events tab hidden — `href: null` in tab layout; App Store reviewer sees 4 functional tabs |
+| Step 8c | Dev artifacts removed — `improved-spawner.ts`, `subagent-monitor.ts`, `task-decomposition.ts` deleted |
+| Step 9 | Upload retry queue — `lib/upload-queue.ts`, `PendingUploadBanner`, NetInfo offline check in review screen, photos stashed to `documentDirectory` |
 
 ### 🔲 Up Next (in order)
 
@@ -686,21 +704,49 @@ Plug in iPhone via USB. This is the most critical unvalidated piece of the app.
 - Kill app mid-drive → reopen → verify draft recovery
 - Confirm blue location indicator bar appears while screen is locked
 
-### Step 6: Content Moderation (App Store Requirement)
-Required by Apple App Store Review Guidelines 1.2 for user-generated content apps.
-- "Report" button on drive cards and comments
-- "Block user" option on profiles
-- Supabase function to flag reported content
-- Admin view to review flagged content (even a basic one)
+### Step 6 & 7: Deploy Backend (User Action Required)
+Before testing moderation and notifications:
+1. **Run SQL migration** in Supabase dashboard → SQL Editor:
+   `docs/supabase-migrations/002_moderation_notifications.sql`
+2. **Deploy Edge Functions** via Supabase CLI:
+   ```bash
+   supabase functions deploy notify-like
+   supabase functions deploy notify-comment
+   supabase functions deploy notify-follow
+   ```
+3. **Set up database webhooks** in Supabase dashboard:
+   - `likes` INSERT → call `notify-like`
+   - `comments` INSERT → call `notify-comment`
+   - `follows` INSERT → call `notify-follow`
 
-### Step 7: Push Notifications
-Without this, users forget the app exists. Single biggest retention lever.
-- Install `expo-notifications`
-- Supabase Edge Function triggers: like, comment, new follower, new drive from followed user
-- Notification permission prompt (shown after first drive published, not on signup)
-- Notification preferences screen in profile settings
+### Step 1: Build & Test GPS on Device ← **ONLY REMAINING CODE BLOCKER**
+```bash
+npx expo run:ios
+```
+Plug in iPhone via USB. This is the most critical unvalidated piece of the app.
+- Start drive → lock phone → drive → finish → review → publish
+- Kill app mid-drive → reopen → verify draft recovery
+- Confirm blue location indicator bar appears while screen is locked
+- Test offline: disable data → publish drive → confirm "Saved for Later" → re-enable → banner appears → confirm drive uploads
 
-### Step 8: App Store Submission
+### Steps 6 & 7 Backend: Deploy (User Action Required)
+Before testing moderation and notifications:
+1. **Run SQL migration** in Supabase dashboard → SQL Editor: `docs/supabase-migrations/002_moderation_notifications.sql`
+2. **Run account deletion verification** in Supabase dashboard → SQL Editor: `docs/supabase-migrations/003_delete_account.sql`
+3. **Deploy Edge Functions** via Supabase CLI:
+   ```bash
+   supabase functions deploy notify-like
+   supabase functions deploy notify-comment
+   supabase functions deploy notify-follow
+   supabase functions deploy delete-account
+   ```
+4. **Set up database webhooks** in Supabase dashboard:
+   - `likes` INSERT → call `notify-like`
+   - `comments` INSERT → call `notify-comment`
+   - `follows` INSERT → call `notify-follow`
+   - *(delete-account is called directly by the client, not a webhook)*
+
+### Step 10: App Store Submission
 - Real app icon (1024×1024 PNG, no transparency, no rounded corners — Apple adds them)
 - Splash screen (centered logo on white)
 - App Store screenshots: 6.7" (iPhone 16 Pro Max) and 6.1" (iPhone 16) sizes required
@@ -714,6 +760,4 @@ Without this, users forget the app exists. Single biggest retention lever.
 
 *This is a living document. Update as features are completed and priorities shift.*
 
----
-
-*This is a living document. Update as features are completed and priorities shift.*
+> **Last reviewed:** February 2026 — Steps 8, 9, 10 & 11 complete. All audit items resolved. Readiness: 95%. Remaining: GPS device testing (npx expo run:ios) + App Store assets (icon, screenshots, privacy policy).

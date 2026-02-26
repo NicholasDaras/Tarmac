@@ -23,6 +23,9 @@ import {
 import * as FileSystem from 'expo-file-system';
 import * as ImageManipulator from 'expo-image-manipulator';
 import { decode } from 'base64-arraybuffer';
+import { useNotifications } from '@/lib/notifications-context';
+import NetInfo from '@react-native-community/netinfo';
+import { savePendingUpload } from '@/lib/upload-queue';
 
 
 export default function ReviewScreen() {
@@ -37,6 +40,7 @@ export default function ReviewScreen() {
   const [rating, setRating] = useState(0);
   const [selectedTags, setSelectedTags] = useState<TagType[]>([]);
   const [stops, setStops] = useState<PointOfInterest[]>([]);
+  const { hasPrompted, registerForPushNotifications } = useNotifications();
 
   useEffect(() => {
     // Load route points from nav params, fall back to AsyncStorage draft
@@ -83,6 +87,33 @@ export default function ReviewScreen() {
     }
     if (photos.length === 0) {
       Alert.alert('No Photos', 'Please add at least one photo.');
+      return;
+    }
+
+    // Check connectivity before attempting upload
+    const netState = await NetInfo.fetch();
+    if (!netState.isConnected) {
+      try {
+        await savePendingUpload(
+          {
+            title: title.trim(),
+            description: description.trim(),
+            rating,
+            tags: selectedTags,
+            stops,
+            routePoints,
+          },
+          photos
+        );
+        await clearDraft();
+        Alert.alert(
+          "Saved for Later",
+          "You're offline. Your drive has been saved and will upload automatically when you reconnect.",
+          [{ text: 'OK', onPress: () => router.replace('/(tabs)/feed') }]
+        );
+      } catch {
+        Alert.alert('Error', 'Could not save drive. Please try again.');
+      }
       return;
     }
 
@@ -154,9 +185,31 @@ export default function ReviewScreen() {
       // Clear the GPS draft now that it's published
       await clearDraft();
 
-      Alert.alert('Published!', 'Your drive is live on the feed.', [
-        { text: 'View Feed', onPress: () => router.replace('/(tabs)/feed') },
-      ]);
+      // After publishing, prompt for notifications if not yet asked
+      if (!hasPrompted) {
+        Alert.alert(
+          'Stay in the Loop 🔔',
+          'Get notified when people like and comment on your drives.',
+          [
+            {
+              text: 'Not Now',
+              style: 'cancel',
+              onPress: () => router.replace('/(tabs)/feed'),
+            },
+            {
+              text: 'Enable Notifications',
+              onPress: async () => {
+                await registerForPushNotifications();
+                router.replace('/(tabs)/feed');
+              },
+            },
+          ]
+        );
+      } else {
+        Alert.alert('Published!', 'Your drive is live on the feed.', [
+          { text: 'View Feed', onPress: () => router.replace('/(tabs)/feed') },
+        ]);
+      }
     } catch (e) {
       console.error('Publish error:', e);
       Alert.alert('Error', 'Something went wrong. Please try again.');

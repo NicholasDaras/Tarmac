@@ -18,6 +18,8 @@ import { supabase, Profile, Drive } from '../../lib/supabase';
 import { useAuth } from '../../lib/auth-context';
 import { useSocial } from '../../lib/social-context';
 import { FollowButton } from '../../components/FollowButton';
+import { BlockButton } from '../../components/BlockButton';
+import { ReportModal } from '../../components/ReportModal';
 import { SocialActionBar } from '../../components/SocialActionBar';
 import { CommentsModal } from '../../components/CommentsModal';
 
@@ -38,7 +40,7 @@ type DriveWithPhotos = Drive & {
  */
 export default function ProfileScreen() {
   const router = useRouter();
-  const { user: currentUser, signOut } = useAuth();
+  const { user: currentUser, signOut, deleteAccount } = useAuth();
   const { getFollowerCount, getFollowingCount } = useSocial();
   const params = useLocalSearchParams();
   const userId = params.userId as string || currentUser?.id;
@@ -53,6 +55,7 @@ export default function ProfileScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [selectedDriveId, setSelectedDriveId] = useState<string | null>(null);
   const [isCommentsVisible, setIsCommentsVisible] = useState(false);
+  const [reportUserVisible, setReportUserVisible] = useState(false);
 
   /**
    * Fetch profile data
@@ -81,7 +84,8 @@ export default function ProfileScreen() {
           comments_count:comments (count)
         `)
         .eq('user_id', userId)
-        .order('created_at', { ascending: false });
+        .order('created_at', { ascending: false
+});
 
       if (drivesError) throw drivesError;
 
@@ -131,6 +135,45 @@ export default function ProfileScreen() {
       [
         { text: 'Cancel', style: 'cancel' },
         { text: 'Sign Out', style: 'destructive', onPress: signOut },
+      ]
+    );
+  };
+
+  /**
+   * Handle account deletion — 2-step confirmation (Apple requirement)
+   */
+  const handleDeleteAccount = () => {
+    Alert.alert(
+      'Delete Account',
+      'This will permanently delete your account, all your drives, photos, and profile data. This cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Continue',
+          style: 'destructive',
+          onPress: () => {
+            Alert.alert(
+              'Are you absolutely sure?',
+              'Your account and all data will be permanently deleted immediately.',
+              [
+                { text: 'Cancel', style: 'cancel' },
+                {
+                  text: 'Delete Forever',
+                  style: 'destructive',
+                  onPress: async () => {
+                    setIsLoading(true);
+                    const { error } = await deleteAccount();
+                    setIsLoading(false);
+                    if (error) {
+                      Alert.alert('Error', 'Could not delete account. Please try again or contact support@tarmac.app.');
+                    }
+                    // On success: auth state change in auth-context redirects to login automatically
+                  },
+                },
+              ]
+            );
+          },
+        },
       ]
     );
   };
@@ -272,14 +315,28 @@ export default function ProfileScreen() {
 
           {/* Action Buttons */}
           {isOwnProfile ? (
-            <TouchableOpacity style={styles.editButton} onPress={handleEditProfile}>
-              <Text style={styles.editButtonText}>Edit Profile</Text>
-            </TouchableOpacity>
+            <>
+              <TouchableOpacity style={styles.editButton} onPress={handleEditProfile}>
+                <Text style={styles.editButtonText}>Edit Profile</Text>
+              </TouchableOpacity>
+              <View style={styles.dangerZone}>
+                <TouchableOpacity onPress={handleDeleteAccount} style={styles.deleteAccountBtn}>
+                  <Text style={styles.deleteAccountText}>Delete Account</Text>
+                </TouchableOpacity>
+              </View>
+            </>
           ) : userId ? (
-            <FollowButton 
-              userId={userId} 
-              onFollowChange={handleFollowChange}
-            />
+            <View style={styles.otherUserActions}>
+              <FollowButton userId={userId} onFollowChange={handleFollowChange} />
+              <BlockButton userId={userId} username={profile?.username ?? ''} />
+              <TouchableOpacity
+                style={styles.reportUserBtn}
+                onPress={() => setReportUserVisible(true)}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Ionicons name="ellipsis-horizontal" size={20} color="#999" />
+              </TouchableOpacity>
+            </View>
           ) : null}
         </View>
 
@@ -316,6 +373,15 @@ export default function ProfileScreen() {
       </ScrollView>
 
       {/* Comments Modal */}
+      {reportUserVisible && userId && (
+        <ReportModal
+          visible={reportUserVisible}
+          onClose={() => setReportUserVisible(false)}
+          targetType="user"
+          targetId={userId}
+        />
+      )}
+
       {selectedDriveId && (
         <CommentsModal
           driveId={selectedDriveId}
@@ -481,5 +547,32 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 14,
     fontWeight: '600',
+  },
+  otherUserActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  reportUserBtn: {
+    padding: 6,
+    borderRadius: 6,
+    backgroundColor: '#F5F5F5',
+  },
+  dangerZone: {
+    marginTop: 24,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#F5F5F5',
+    alignItems: 'center',
+    width: '100%',
+  },
+  deleteAccountBtn: {
+    paddingVertical: 10,
+    paddingHorizontal: 24,
+  },
+  deleteAccountText: {
+    color: '#FF3B30',
+    fontSize: 14,
+    fontWeight: '500',
   },
 });

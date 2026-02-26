@@ -6,6 +6,7 @@ import {
   ScrollView,
   TouchableOpacity,
   ActivityIndicator,
+  Alert,
   Share,
   Modal,
   Dimensions,
@@ -23,6 +24,9 @@ import { CommentsSection } from '@/components/CommentsSection';
 import { RouteMap } from '@/components/RouteMap';
 import { supabase, Drive, Profile, DrivePhoto, DriveStop } from '@/lib/supabase';
 import { useAuth } from '@/lib/auth-context';
+import { useModeration } from '@/lib/moderation-context';
+import * as Haptics from 'expo-haptics';
+import { ReportModal } from '@/components/ReportModal';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -58,6 +62,8 @@ export default function DriveDetailScreen() {
   const [zoomPhotoIndex, setZoomPhotoIndex] = useState(0);
   const [isSubmittingComment, setIsSubmittingComment] = useState(false);
   const [zoomModalVisible, setZoomModalVisible] = useState(false);
+  const [reportModalVisible, setReportModalVisible] = useState(false);
+  const { reportDrive } = useModeration();
 
   // Fetch drive data
   const fetchDrive = useCallback(async () => {
@@ -142,10 +148,38 @@ export default function DriveDetailScreen() {
     fetchComments();
   }, [fetchDrive, fetchComments]);
 
+  // Handle delete (own drives only)
+  const handleDelete = () => {
+    Alert.alert(
+      'Delete Drive',
+      'This will permanently delete your drive, all photos, and comments. This cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            const { error } = await supabase
+              .from('drives')
+              .delete()
+              .eq('id', id)
+              .eq('user_id', user!.id);
+            if (error) {
+              Alert.alert('Error', 'Could not delete drive. Please try again.');
+            } else {
+              router.replace('/(tabs)/feed');
+            }
+          },
+        },
+      ]
+    );
+  };
+
   // Handle like toggle
   const handleLike = async () => {
     if (!user || !drive) return;
 
+    if (!drive.user_has_liked) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     try {
       if (drive.user_has_liked) {
         await supabase.from('likes').delete().eq('drive_id', drive.id).eq('user_id', user.id);
@@ -255,7 +289,17 @@ export default function DriveDetailScreen() {
           <Ionicons name="arrow-back" size={24} color="#000" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Drive Details</Text>
-        <View style={styles.placeholder} />
+        {drive && drive.user_id !== user?.id ? (
+          <TouchableOpacity onPress={() => setReportModalVisible(true)} style={styles.menuButton}>
+            <Ionicons name="ellipsis-horizontal" size={22} color="#000" />
+          </TouchableOpacity>
+        ) : drive && drive.user_id === user?.id ? (
+          <TouchableOpacity onPress={handleDelete} style={styles.menuButton}>
+            <Ionicons name="trash-outline" size={22} color="#FF3B30" />
+          </TouchableOpacity>
+        ) : (
+          <View style={styles.placeholder} />
+        )}
       </View>
 
       <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
@@ -317,6 +361,16 @@ export default function DriveDetailScreen() {
           isSubmitting={isSubmittingComment}
         />
       </ScrollView>
+
+      {/* Report Modal */}
+      {drive && (
+        <ReportModal
+          visible={reportModalVisible}
+          onClose={() => setReportModalVisible(false)}
+          targetType="drive"
+          targetId={drive.id}
+        />
+      )}
 
       {/* Zoom Modal */}
       <Modal
@@ -393,6 +447,9 @@ const styles = StyleSheet.create({
   },
   placeholder: {
     width: 24,
+  },
+  menuButton: {
+    padding: 8,
   },
   scrollView: {
     flex: 1,

@@ -23,8 +23,10 @@
         "NSLocationAlwaysAndWhenInUseUsageDescription": "Tarmac records your GPS route while you drive, even when the screen is locked.",
         "NSLocationAlwaysUsageDescription": "Tarmac records your GPS route while you drive, even when the screen is locked.",
         "UIBackgroundModes": [
-          "location"
-        ]
+          "location",
+          "remote-notification"
+        ],
+        "NSUserNotificationAlertStyle": "alert"
       }
     },
     "plugins": [
@@ -35,6 +37,13 @@
         {
           "locationAlwaysAndWhenInUsePermission": "Tarmac records your GPS route while you drive, even when the screen is locked.",
           "isIosBackgroundLocationEnabled": true
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/icon.png",
+          "color": "#000000"
         }
       ]
     ],

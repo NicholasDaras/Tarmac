@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(/opt/homebrew/bin/brew install:*)",
+      "Read(//usr/local/bin/**)",
+      "Read(//usr/**)",
+      "Bash(echo:*)",
+      "Bash(tar:*)",
+      "Bash(chmod:*)",
+      "Bash(/tmp/supabase:*)",
+      "Bash(SUPABASE_ACCESS_TOKEN=sbp_4484c10ade2422f9f4ae07c8196e7b7433a2cd1a /tmp/supabase projects:*)",
+      "Bash(SUPABASE_ACCESS_TOKEN=sbp_4484c10ade2422f9f4ae07c8196e7b7433a2cd1a /tmp/supabase functions list:*)",
+      "Read(//private/tmp/**)",
+      "Bash(SUPABASE_ACCESS_TOKEN=sbp_4484c10ade2422f9f4ae07c8196e7b7433a2cd1a /tmp/supabase functions deploy delete-account --project-ref tfuvogiayixbeclcbiuc --workdir \"/Users/nicholasdaras/Documents/Documents - Nicholas''s Mac mini/Development/Projects/Tarmac\")",
+      "Bash(grep:*)",
+      "Bash(ls:*)",
+      "Read(//Users/nicholasdaras/Documents/Documents - Nicholas’s Mac mini/Development/Projects/Tarmac/**)"
+    ]
+  }
+}

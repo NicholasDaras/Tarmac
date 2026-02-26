@@ -39,6 +39,7 @@ type AuthContextType = {
   signIn: (email: string, password: string) => Promise<{ error: Error | null; message?: string }>;
   signUp: (email: string, password: string, metadata: { username: string; fullName?: string }) => Promise<{ error: Error | null; message?: string }>;
   signOut: () => Promise<void>;
+  deleteAccount: () => Promise<{ error: Error | null }>;
   rateLimitStatus: { login: number; signup: number };
 };
 
@@ -263,6 +264,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   /**
+   * Delete account — purges all user data server-side via Edge Function
+   * Required by Apple App Store Guidelines 5.1.1
+   */
+  const deleteAccount = async (): Promise<{ error: Error | null }> => {
+    try {
+      const { data: { session: currentSession } } = await supabase.auth.getSession();
+      if (!currentSession) return { error: new Error('Not authenticated') };
+
+      const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL!;
+      const response = await fetch(`${supabaseUrl}/functions/v1/delete-account`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${currentSession.access_token}` },
+      });
+
+      if (!response.ok) {
+        return { error: new Error('Account deletion failed. Please try again.') };
+      }
+
+      // Sign out locally — auth state change triggers redirect to login
+      await supabase.auth.signOut();
+      return { error: null };
+    } catch (e) {
+      console.error('Delete account error:', e);
+      return { error: e as Error };
+    }
+  };
+
+  /**
    * Sign out
    */
   const signOut = async () => {
@@ -285,6 +314,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     signIn,
     signUp,
     signOut,
+    deleteAccount,
     rateLimitStatus,
   };
 

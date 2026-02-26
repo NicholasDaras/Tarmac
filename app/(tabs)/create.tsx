@@ -3,6 +3,7 @@ import { View, Text, TouchableOpacity, StyleSheet, Alert, ActivityIndicator } fr
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import * as Haptics from 'expo-haptics';
 import {
   requestPermissions,
   startTracking,
@@ -69,6 +70,7 @@ export default function CreateScreen() {
       await startTracking();
       setElapsed(0);
       setState('recording');
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch (e) {
       Alert.alert('Error', 'Could not start GPS tracking. Please try again.');
     } finally {
@@ -95,6 +97,7 @@ export default function CreateScreen() {
                 return;
               }
               setState('idle');
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
               router.push({
                 pathname: '/drive/review' as any,
                 params: { draftPointsJson: JSON.stringify(finished.points) },

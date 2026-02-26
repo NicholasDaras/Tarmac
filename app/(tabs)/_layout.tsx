@@ -58,6 +58,7 @@ export default function TabLayout() {
         name="events"
         options={{
           title: 'Events',
+          href: null, // Hidden until Events feature is built — Apple rejects non-functional UI
         }}
       />
       <Tabs.Screen
