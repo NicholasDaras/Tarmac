@@ -168,3 +168,31 @@ export type Follow = {
   following_id: string;
   created_at: string;
 };
+
+export type Report = {
+  id: string;
+  reporter_id: string;
+  reported_user_id: string | null;
+  reported_drive_id: string | null;
+  reported_comment_id: string | null;
+  reason: 'spam' | 'inappropriate' | 'harassment' | 'misleading' | 'other';
+  description: string | null;
+  status: 'pending' | 'reviewed' | 'dismissed' | 'resolved';
+  created_at: string;
+};
+
+export type Block = {
+  id: string;
+  blocker_id: string;
+  blocked_id: string;
+  created_at: string;
+};
+
+export type PushToken = {
+  id: string;
+  user_id: string;
+  token: string;
+  updated_at: string;
+};
+
+export type ReportReason = Report['reason'];

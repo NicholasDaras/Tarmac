@@ -1,3 +1,4 @@
+import '@/lib/gps-tracker'; // Register background task before React tree
 import { Slot, useRouter } from 'expo-router';
 import { useEffect } from 'react';
 import { SafeAreaProvider } from 'react-native-safe-area-context';

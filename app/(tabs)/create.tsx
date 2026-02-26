@@ -1,385 +1,278 @@
-import React, { useState } from 'react';
-import {
-  View,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  ScrollView,
-  StyleSheet,
-  Alert,
-  ActivityIndicator,
-  KeyboardAvoidingView,
-} from 'react-native';
+import { useState, useEffect, useCallback } from 'react';
+import { View, Text, TouchableOpacity, StyleSheet, Alert, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
-import { PhotoUpload } from '@/components/PhotoUpload';
-import { StarRating } from '@/components/StarRating';
-import { TagSelector, TagType } from '@/components/TagSelector';
-import { PointsOfInterest, PointOfInterest } from '@/components/PointsOfInterest';
-import { supabase } from '@/lib/supabase';
-import * as FileSystem from 'expo-file-system';
-import { decode } from 'base64-arraybuffer';
-import { EncodingType } from 'expo-file-system';
+import { useRouter, useFocusEffect } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
+import {
+  requestPermissions,
+  startTracking,
+  stopTracking,
+  isCurrentlyTracking,
+  loadDraft,
+  clearDraft,
+  formatDistance,
+  formatDuration,
+  computeTotalDistanceMeters,
+  RouteDraft,
+} from '@/lib/gps-tracker';
 
-/**
- * Create Drive Screen
- * 
- * Full-featured screen for creating new drive posts.
- * Includes photo upload, drive details, star rating, tags,
- * points of interest, and publishing to Supabase.
- */
+type ScreenState = 'idle' | 'recording' | 'draft';
+
 export default function CreateScreen() {
   const router = useRouter();
+  const [state, setState] = useState<ScreenState>('idle');
+  const [draft, setDraft] = useState<RouteDraft | null>(null);
+  const [elapsed, setElapsed] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
 
-  // Form state
-  const [photos, setPhotos] = useState<string[]>([]);
-  const [title, setTitle] = useState('');
-  const [description, setDescription] = useState('');
-  const [routeDescription, setRouteDescription] = useState('');
-  const [rating, setRating] = useState(0);
-  const [selectedTags, setSelectedTags] = useState<TagType[]>([]);
-  const [stops, setStops] = useState<PointOfInterest[]>([]);
+  // Refresh state every time the tab is focused
+  useFocusEffect(
+    useCallback(() => {
+      checkState();
+    }, [])
+  );
 
-  // Toggle tag selection
-  const handleTagToggle = (tag: TagType) => {
-    if (selectedTags.includes(tag)) {
-      setSelectedTags(selectedTags.filter((t) => t !== tag));
+  // Elapsed timer while recording
+  useEffect(() => {
+    if (state !== 'recording') return;
+    const interval = setInterval(() => setElapsed(s => s + 1), 1000);
+    return () => clearInterval(interval);
+  }, [state]);
+
+  const checkState = async () => {
+    const tracking = await isCurrentlyTracking();
+    const currentDraft = await loadDraft();
+    setDraft(currentDraft);
+    if (tracking) {
+      setState('recording');
+      if (currentDraft) {
+        setElapsed(Math.round((Date.now() - currentDraft.startedAt) / 1000));
+      }
+    } else if (currentDraft) {
+      setState('draft');
     } else {
-      setSelectedTags([...selectedTags, tag]);
+      setState('idle');
     }
   };
 
-  // Upload photo to Supabase Storage
-  const uploadPhoto = async (uri: string, driveId: string, index: number): Promise<string | null> => {
-    try {
-      // Read file as base64
-      const base64 = await FileSystem.readAsStringAsync(uri, {
-        encoding: EncodingType.Base64,
-      });
-
-      // Generate unique filename
-      const fileExt = 'jpg';
-      const fileName = `${driveId}/${Date.now()}_${index}.${fileExt}`;
-      const filePath = `drives/${fileName}`;
-
-      // Upload to Supabase Storage
-      const { error: uploadError } = await supabase.storage
-        .from('drives')
-        .upload(filePath, decode(base64), {
-          contentType: 'image/jpeg',
-        });
-
-      if (uploadError) {
-        console.error('Upload error:', uploadError);
-        return null;
-      }
-
-      // Get public URL
-      const { data: { publicUrl } } = supabase.storage
-        .from('drives')
-        .getPublicUrl(filePath);
-
-      return publicUrl;
-    } catch (error) {
-      console.error('Error uploading photo:', error);
-      return null;
-    }
-  };
-
-  // Validate form
-  const validateForm = (): boolean => {
-    if (!title.trim()) {
-      Alert.alert('Missing Title', 'Please enter a title for your drive.');
-      return false;
-    }
-    if (photos.length === 0) {
-      Alert.alert('No Photos', 'Please add at least one photo.');
-      return false;
-    }
-    return true;
-  };
-
-  // Handle publish
-  const handlePublish = async () => {
-    if (!validateForm()) return;
-
+  const handleStart = async () => {
     setIsLoading(true);
-
     try {
-      // Get current user
-      const { data: { user }, error: userError } = await supabase.auth.getUser();
-      
-      if (userError || !user) {
-        Alert.alert('Error', 'You must be logged in to create a drive.');
-        setIsLoading(false);
+      const granted = await requestPermissions();
+      if (!granted) {
+        Alert.alert(
+          'Location Permission Required',
+          'Please allow "Always" location access so Tarmac can record your route while driving.',
+        );
         return;
       }
-
-      // Create drive record
-      const { data: driveData, error: driveError } = await supabase
-        .from('drives')
-        .insert({
-          user_id: user.id,
-          title: title.trim(),
-          description: description.trim() || null,
-          rating: rating > 0 ? rating : null,
-          route_data: routeDescription.trim() ? { description: routeDescription.trim() } : null,
-          tags: selectedTags,
-        })
-        .select('id')
-        .single();
-
-      if (driveError || !driveData) {
-        console.error('Drive creation error:', driveError);
-        Alert.alert('Error', 'Failed to create drive. Please try again.');
-        setIsLoading(false);
-        return;
-      }
-
-      const driveId = driveData.id;
-
-      // Upload photos
-      const photoUrls: string[] = [];
-      for (let i = 0; i < photos.length; i++) {
-        const url = await uploadPhoto(photos[i], driveId, i);
-        if (url) {
-          photoUrls.push(url);
-        }
-      }
-
-      // Insert photo records
-      if (photoUrls.length > 0) {
-        const photoRecords = photoUrls.map((url, index) => ({
-          drive_id: driveId,
-          photo_url: url,
-          order_index: index,
-        }));
-
-        const { error: photosError } = await supabase
-          .from('drive_photos')
-          .insert(photoRecords);
-
-        if (photosError) {
-          console.error('Photos insert error:', photosError);
-        }
-      }
-
-      // Insert stops if any
-      if (stops.length > 0) {
-        const stopRecords = stops.map((stop, index) => ({
-          drive_id: driveId,
-          name: stop.name,
-          description: stop.description || null,
-          order_index: index,
-        }));
-
-        const { error: stopsError } = await supabase
-          .from('drive_stops')
-          .insert(stopRecords);
-
-        if (stopsError) {
-          console.error('Stops insert error:', stopsError);
-        }
-      }
-
-      Alert.alert('Success', 'Your drive has been published!', [
-        {
-          text: 'View Feed',
-          onPress: () => router.push('/(tabs)/feed'),
-        },
-      ]);
-
-      // Reset form
-      setPhotos([]);
-      setTitle('');
-      setDescription('');
-      setRouteDescription('');
-      setRating(0);
-      setSelectedTags([]);
-      setStops([]);
-
-    } catch (error) {
-      console.error('Publish error:', error);
-      Alert.alert('Error', 'Something went wrong. Please try again.');
+      await startTracking();
+      setElapsed(0);
+      setState('recording');
+    } catch (e) {
+      Alert.alert('Error', 'Could not start GPS tracking. Please try again.');
     } finally {
       setIsLoading(false);
     }
   };
 
-  return (
-    <SafeAreaView style={styles.container} edges={['top']}>
-      <KeyboardAvoidingView
-        behavior="padding"
-        style={styles.keyboardView}
-      >
-        <ScrollView
-          style={styles.scrollView}
-          contentContainerStyle={styles.scrollContent}
-          showsVerticalScrollIndicator={false}
-          keyboardShouldPersistTaps="handled"
-        >
-          {/* Header */}
-          <View style={styles.header}>
-            <Text style={styles.headerTitle}>Create Drive</Text>
+  const handleFinish = () => {
+    Alert.alert(
+      'Finish Drive?',
+      'Stop recording and go to the publish screen?',
+      [
+        { text: 'Keep Recording', style: 'cancel' },
+        {
+          text: 'Finish',
+          onPress: async () => {
+            setIsLoading(true);
+            try {
+              const finished = await stopTracking();
+              if (!finished || finished.points.length < 2) {
+                Alert.alert('No Route Recorded', 'Not enough GPS points were captured. Check that location permission is set to "Always".');
+                await clearDraft();
+                setState('idle');
+                return;
+              }
+              setState('idle');
+              router.push({
+                pathname: '/drive/review' as any,
+                params: { draftPointsJson: JSON.stringify(finished.points) },
+              });
+            } catch (e) {
+              Alert.alert('Error', 'Could not stop recording. Please try again.');
+            } finally {
+              setIsLoading(false);
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const handlePublishDraft = () => {
+    if (!draft) return;
+    router.push({
+      pathname: '/drive/review' as any,
+      params: { draftPointsJson: JSON.stringify(draft.points) },
+    });
+  };
+
+  const handleDiscard = () => {
+    Alert.alert(
+      'Discard Drive?',
+      'This will permanently delete your recorded route.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Discard',
+          style: 'destructive',
+          onPress: async () => {
+            await clearDraft();
+            setDraft(null);
+            setState('idle');
+          },
+        },
+      ]
+    );
+  };
+
+  // ── Recording ──────────────────────────────────────────────────────
+  if (state === 'recording') {
+    const distMeters = draft ? computeTotalDistanceMeters(draft.points) : 0;
+    return (
+      <SafeAreaView style={styles.container} edges={['top']}>
+        <View style={styles.centered}>
+          <View style={styles.recordingBadge}>
+            <View style={styles.recordingDot} />
+            <Text style={styles.recordingLabel}>RECORDING</Text>
           </View>
 
-          {/* Photo Upload Section */}
-          <View style={styles.section}>
-            <Text style={styles.sectionLabel}>
-              Photos <Text style={styles.required}>*</Text>
-            </Text>
-            <PhotoUpload photos={photos} onPhotosChange={setPhotos} maxPhotos={10} />
-          </View>
+          <Text style={styles.timer}>{formatDuration(elapsed * 1000)}</Text>
 
-          {/* Drive Details Form */}
-          <View style={styles.section}>
-            <Text style={styles.sectionLabel}>
-              Title <Text style={styles.required}>*</Text>
-            </Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Give your drive a name"
-              placeholderTextColor="#999"
-              value={title}
-              onChangeText={setTitle}
-              maxLength={100}
-            />
+          <Text style={styles.statsText}>
+            {draft?.points.length ?? 0} points · {formatDistance(distMeters)}
+          </Text>
 
-            <Text style={styles.sectionLabel}>Description</Text>
-            <TextInput
-              style={[styles.input, styles.textArea]}
-              placeholder="Tell us about your drive experience..."
-              placeholderTextColor="#999"
-              value={description}
-              onChangeText={setDescription}
-              multiline
-              numberOfLines={4}
-              maxLength={500}
-            />
+          <Text style={styles.hint}>
+            You can lock your screen.{'\n'}Your route is being tracked in the background.
+          </Text>
 
-            <Text style={styles.sectionLabel}>Route Description</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="e.g., Highway 1 from SF to Monterey"
-              placeholderTextColor="#999"
-              value={routeDescription}
-              onChangeText={setRouteDescription}
-              maxLength={200}
-            />
-          </View>
-
-          {/* Star Rating */}
-          <View style={styles.section}>
-            <Text style={styles.sectionLabel}>Rating</Text>
-            <StarRating rating={rating} onRatingChange={setRating} />
-          </View>
-
-          {/* Tags */}
-          <View style={styles.section}>
-            <Text style={styles.sectionLabel}>Tags</Text>
-            <TagSelector selectedTags={selectedTags} onTagToggle={handleTagToggle} />
-          </View>
-
-          {/* Points of Interest */}
-          <View style={styles.section}>
-            <Text style={styles.sectionLabel}>Points of Interest (Optional)</Text>
-            <PointsOfInterest stops={stops} onStopsChange={setStops} />
-          </View>
-
-          {/* Publish Button */}
           <TouchableOpacity
-            style={[styles.publishButton, isLoading && styles.publishButtonDisabled]}
-            onPress={handlePublish}
+            style={[styles.finishButton, isLoading && styles.disabled]}
+            onPress={handleFinish}
             disabled={isLoading}
             activeOpacity={0.8}
           >
-            {isLoading ? (
-              <ActivityIndicator color="#FFFFFF" />
-            ) : (
-              <Text style={styles.publishButtonText}>Publish Drive</Text>
-            )}
+            {isLoading
+              ? <ActivityIndicator color="#fff" />
+              : <Text style={styles.finishButtonText}>Finish Drive</Text>
+            }
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  // ── Draft saved ────────────────────────────────────────────────────
+  if (state === 'draft') {
+    const distMeters = draft ? computeTotalDistanceMeters(draft.points) : 0;
+    const durationMs = draft ? Date.now() - draft.startedAt : 0;
+    return (
+      <SafeAreaView style={styles.container} edges={['top']}>
+        <View style={styles.header}>
+          <Text style={styles.headerTitle}>Create Drive</Text>
+        </View>
+        <View style={styles.centered}>
+          <Ionicons name="checkmark-circle" size={64} color="#000" style={{ marginBottom: 16 }} />
+          <Text style={styles.draftTitle}>Drive Saved</Text>
+          <Text style={styles.draftMeta}>
+            {draft?.points.length ?? 0} GPS points · {formatDistance(distMeters)}
+          </Text>
+
+          <TouchableOpacity style={styles.startButton} onPress={handlePublishDraft} activeOpacity={0.8}>
+            <Text style={styles.startButtonText}>Review & Publish</Text>
           </TouchableOpacity>
 
-          {/* Bottom Spacing */}
-          <View style={styles.bottomSpacing} />
-        </ScrollView>
-      </KeyboardAvoidingView>
+          <TouchableOpacity style={styles.discardButton} onPress={handleDiscard} activeOpacity={0.8}>
+            <Text style={styles.discardText}>Discard Drive</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  // ── Idle ──────────────────────────────────────────────────────────
+  return (
+    <SafeAreaView style={styles.container} edges={['top']}>
+      <View style={styles.header}>
+        <Text style={styles.headerTitle}>Create Drive</Text>
+      </View>
+      <View style={styles.centered}>
+        <Ionicons name="car-sport-outline" size={72} color="#000" style={{ marginBottom: 24 }} />
+        <Text style={styles.idleTitle}>Ready to drive?</Text>
+        <Text style={styles.idleSubtitle}>
+          Tap record and Tarmac will track your route automatically.
+          You can lock your screen while driving.
+        </Text>
+
+        <TouchableOpacity
+          style={[styles.startButton, isLoading && styles.disabled]}
+          onPress={handleStart}
+          disabled={isLoading}
+          activeOpacity={0.8}
+        >
+          {isLoading
+            ? <ActivityIndicator color="#fff" />
+            : <Text style={styles.startButtonText}>Start Drive</Text>
+          }
+        </TouchableOpacity>
+      </View>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#FFFFFF',
-  },
-  keyboardView: {
-    flex: 1,
-  },
-  scrollView: {
-    flex: 1,
-  },
-  scrollContent: {
-    paddingHorizontal: 20,
-  },
+  container: { flex: 1, backgroundColor: '#fff' },
   header: {
+    paddingHorizontal: 20,
     paddingVertical: 16,
     borderBottomWidth: 1,
     borderBottomColor: '#F0F0F0',
-    marginBottom: 8,
   },
-  headerTitle: {
-    fontSize: 28,
-    fontWeight: '700',
-    color: '#000000',
+  headerTitle: { fontSize: 28, fontWeight: '700', color: '#000' },
+  centered: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32 },
+
+  // Idle
+  idleTitle: { fontSize: 24, fontWeight: '700', textAlign: 'center', marginBottom: 12 },
+  idleSubtitle: { fontSize: 15, color: '#666', textAlign: 'center', lineHeight: 22, marginBottom: 40 },
+  startButton: {
+    backgroundColor: '#000', borderRadius: 12, paddingVertical: 18,
+    alignItems: 'center', width: '100%', marginBottom: 12,
   },
-  section: {
-    marginBottom: 24,
+  startButtonText: { color: '#fff', fontSize: 18, fontWeight: '700' },
+
+  // Recording
+  recordingBadge: { flexDirection: 'row', alignItems: 'center', marginBottom: 24 },
+  recordingDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: '#FF0000', marginRight: 8 },
+  recordingLabel: { fontSize: 13, fontWeight: '700', color: '#FF0000', letterSpacing: 2 },
+  timer: { fontSize: 64, fontWeight: '200', color: '#000', marginBottom: 8, fontVariant: ['tabular-nums'] },
+  statsText: { fontSize: 14, color: '#666', marginBottom: 8 },
+  hint: { fontSize: 13, color: '#999', textAlign: 'center', lineHeight: 20, marginBottom: 48 },
+  finishButton: {
+    backgroundColor: '#FF0000', borderRadius: 12, paddingVertical: 18,
+    alignItems: 'center', width: '100%',
   },
-  sectionLabel: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#000000',
-    marginBottom: 8,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
+  finishButtonText: { color: '#fff', fontSize: 18, fontWeight: '700' },
+
+  // Draft
+  draftTitle: { fontSize: 22, fontWeight: '700', textAlign: 'center', marginBottom: 8 },
+  draftMeta: { fontSize: 14, color: '#666', marginBottom: 36 },
+  discardButton: {
+    borderWidth: 1, borderColor: '#E8E8E8', borderRadius: 12,
+    paddingVertical: 14, alignItems: 'center', width: '100%',
   },
-  required: {
-    color: '#FF0000',
-  },
-  input: {
-    backgroundColor: '#F9F9F9',
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    fontSize: 16,
-    color: '#000000',
-    borderWidth: 1,
-    borderColor: '#E8E8E8',
-    marginBottom: 16,
-  },
-  textArea: {
-    height: 100,
-    textAlignVertical: 'top',
-    paddingTop: 14,
-  },
-  publishButton: {
-    backgroundColor: '#FF0000',
-    borderRadius: 12,
-    paddingVertical: 16,
-    alignItems: 'center',
-    marginTop: 8,
-  },
-  publishButtonDisabled: {
-    opacity: 0.7,
-  },
-  publishButtonText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '700',
-  },
-  bottomSpacing: {
-    height: 40,
-  },
+  discardText: { color: '#999', fontSize: 15 },
+
+  disabled: { opacity: 0.6 },
 });

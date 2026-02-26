@@ -3,7 +3,6 @@ import {
   View, 
   Text, 
   StyleSheet, 
-  Image, 
   TouchableOpacity, 
   FlatList, 
   RefreshControl,
@@ -11,6 +10,7 @@ import {
   Alert,
   ScrollView,
 } from 'react-native';
+import { Image } from 'expo-image';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';

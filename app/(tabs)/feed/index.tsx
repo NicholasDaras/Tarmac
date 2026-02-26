@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, FlatList, RefreshControl, TouchableOpacity, Image } from 'react-native';
+import { useEffect, useState, useCallback, useRef } from 'react';
+import { View, Text, StyleSheet, FlatList, RefreshControl, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -7,9 +8,8 @@ import { supabase, Drive, Profile } from '../../../lib/supabase';
 import { SocialActionBar } from '../../../components/SocialActionBar';
 import { CommentsModal } from '../../../components/CommentsModal';
 
-/**
- * Drive with author info
- */
+const PAGE_SIZE = 15;
+
 type DriveWithAuthor = Drive & {
   profiles: Profile;
   photos: { photo_url: string }[];
@@ -17,26 +17,37 @@ type DriveWithAuthor = Drive & {
   comments_count: number;
 };
 
-/**
- * Feed Screen
- *
- * Displays a scrollable list of recent drives from the community.
- * Users can tap a drive to view details.
- */
+// ── Skeleton card shown while loading ─────────────────────────────────────────
+function SkeletonCard() {
+  return (
+    <View style={styles.card}>
+      <View style={styles.skeletonHeader}>
+        <View style={styles.skeletonAvatar} />
+        <View style={styles.skeletonName} />
+      </View>
+      <View style={styles.skeletonImage} />
+      <View style={styles.skeletonBody}>
+        <View style={styles.skeletonTitle} />
+        <View style={styles.skeletonSubtitle} />
+      </View>
+    </View>
+  );
+}
+
 export default function FeedScreen() {
   const router = useRouter();
   const [drives, setDrives] = useState<DriveWithAuthor[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
   const [selectedDriveId, setSelectedDriveId] = useState<string | null>(null);
   const [isCommentsVisible, setIsCommentsVisible] = useState(false);
+  const cursorRef = useRef<string | null>(null); // created_at of last item
 
-  /**
-   * Fetch drives from Supabase
-   */
-  const fetchDrives = async () => {
+  const fetchDrives = useCallback(async (cursor: string | null = null) => {
     try {
-      const { data, error } = await supabase
+      let query = supabase
         .from('drives')
         .select(`
           *,
@@ -46,89 +57,107 @@ export default function FeedScreen() {
           comments_count:comments (count)
         `)
         .order('created_at', { ascending: false })
-        .limit(20);
+        .limit(PAGE_SIZE);
 
+      if (cursor) {
+        query = query.lt('created_at', cursor);
+      }
+
+      const { data, error } = await query;
       if (error) throw error;
 
-      // Transform the data to match our type
-      const transformedData = (data || []).map((drive: any) => ({
+      const transformed = (data || []).map((drive: any) => ({
         ...drive,
         likes_count: drive.likes_count?.[0]?.count || 0,
         comments_count: drive.comments_count?.[0]?.count || 0,
       }));
 
-      setDrives(transformedData);
+      if (cursor) {
+        setDrives(prev => [...prev, ...transformed]);
+      } else {
+        setDrives(transformed);
+      }
+
+      setHasMore(transformed.length === PAGE_SIZE);
+      if (transformed.length > 0) {
+        cursorRef.current = transformed[transformed.length - 1].created_at;
+      }
     } catch (error) {
       console.error('Error fetching drives:', error);
     } finally {
       setLoading(false);
       setRefreshing(false);
+      setLoadingMore(false);
     }
-  };
-
-  // Initial load
-  useEffect(() => {
-    fetchDrives();
   }, []);
 
-  /**
-   * Handle pull-to-refresh
-   */
-  const onRefresh = () => {
-    setRefreshing(true);
+  useEffect(() => {
     fetchDrives();
+  }, [fetchDrives]);
+
+  const onRefresh = () => {
+    cursorRef.current = null;
+    setHasMore(true);
+    setRefreshing(true);
+    fetchDrives(null);
   };
 
-  /**
-   * Open comments modal for a drive
-   */
+  const onEndReached = () => {
+    if (loadingMore || !hasMore) return;
+    setLoadingMore(true);
+    fetchDrives(cursorRef.current);
+  };
+
   const openComments = (driveId: string) => {
     setSelectedDriveId(driveId);
     setIsCommentsVisible(true);
   };
 
-  /**
-   * Close comments modal
-   */
   const closeComments = () => {
     setIsCommentsVisible(false);
     setSelectedDriveId(null);
-    // Refresh drives to get updated comment count
-    fetchDrives();
+    fetchDrives(null);
   };
 
-  /**
-   * Render a single drive card
-   */
   const renderDriveCard = ({ item }: { item: DriveWithAuthor }) => {
     const firstPhoto = item.photos?.[0]?.photo_url;
     const author = item.profiles;
 
     return (
       <View style={styles.card}>
-        {/* Author Header */}
+        {/* Author header */}
         <TouchableOpacity
           style={styles.authorHeader}
           onPress={() => router.push(`/profile/${author.id}`)}
         >
-          {author.profile_photo_url ? (
-            <Image source={{ uri: author.profile_photo_url }} style={styles.authorAvatar} />
-          ) : (
-            <View style={styles.authorAvatarPlaceholder}>
-              <Ionicons name="person" size={16} color="#999" />
-            </View>
-          )}
+          <Image
+            source={{ uri: author.profile_photo_url ?? undefined }}
+            style={styles.authorAvatar}
+            contentFit="cover"
+            placeholder={{ blurhash: 'L6PZfSi_.AyE_3t7t7R**0o#DgR4' }}
+            transition={200}
+          />
           <Text style={styles.authorName}>{author.username}</Text>
         </TouchableOpacity>
 
-        {/* Drive Photo - Navigate to drive detail on press */}
+        {/* Drive photo */}
         <TouchableOpacity onPress={() => router.push(`/drive/${item.id}`)}>
-          {firstPhoto && (
-            <Image source={{ uri: firstPhoto }} style={styles.driveImage} />
+          {firstPhoto ? (
+            <Image
+              source={{ uri: firstPhoto }}
+              style={styles.driveImage}
+              contentFit="cover"
+              placeholder={{ blurhash: 'L6PZfSi_.AyE_3t7t7R**0o#DgR4' }}
+              transition={300}
+            />
+          ) : (
+            <View style={styles.driveImagePlaceholder}>
+              <Ionicons name="car-sport-outline" size={40} color="#ccc" />
+            </View>
           )}
         </TouchableOpacity>
 
-        {/* Social Actions */}
+        {/* Social actions */}
         <SocialActionBar
           driveId={item.id}
           likesCount={item.likes_count}
@@ -136,20 +165,19 @@ export default function FeedScreen() {
           onCommentPress={() => openComments(item.id)}
         />
 
-        {/* Drive Info */}
-        <TouchableOpacity 
+        {/* Drive info */}
+        <TouchableOpacity
           style={styles.driveInfo}
           onPress={() => router.push(`/drive/${item.id}`)}
         >
           <Text style={styles.driveTitle}>{item.title}</Text>
-          {item.description && (
+          {item.description ? (
             <Text style={styles.driveDescription} numberOfLines={2}>
               {item.description}
             </Text>
-          )}
+          ) : null}
 
-          {/* Rating */}
-          {item.rating && (
+          {item.rating ? (
             <View style={styles.ratingContainer}>
               {[...Array(5)].map((_, i) => (
                 <Ionicons
@@ -160,10 +188,9 @@ export default function FeedScreen() {
                 />
               ))}
             </View>
-          )}
+          ) : null}
 
-          {/* Tags */}
-          {item.tags && item.tags.length > 0 && (
+          {item.tags && item.tags.length > 0 ? (
             <View style={styles.tagsContainer}>
               {item.tags.slice(0, 3).map((tag, index) => (
                 <View key={index} style={styles.tag}>
@@ -171,8 +198,17 @@ export default function FeedScreen() {
                 </View>
               ))}
             </View>
-          )}
+          ) : null}
         </TouchableOpacity>
+      </View>
+    );
+  };
+
+  const renderFooter = () => {
+    if (!loadingMore) return null;
+    return (
+      <View style={styles.footerLoader}>
+        <ActivityIndicator size="small" color="#999" />
       </View>
     );
   };
@@ -182,29 +218,49 @@ export default function FeedScreen() {
       {/* Header */}
       <View style={styles.header}>
         <Text style={styles.headerTitle}>TARMAC</Text>
-        <TouchableOpacity>
+        <TouchableOpacity onPress={() => router.push('/(tabs)/search')}>
           <Ionicons name="search" size={24} color="#000" />
         </TouchableOpacity>
       </View>
 
-      {/* Feed List */}
-      <FlatList
-        data={drives}
-        renderItem={renderDriveCard}
-        keyExtractor={(item) => item.id}
-        contentContainerStyle={styles.listContent}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-        }
-        ListEmptyComponent={
-          <View style={styles.emptyState}>
-            <Text style={styles.emptyText}>No drives yet</Text>
-            <Text style={styles.emptySubtext}>Be the first to share a drive!</Text>
-          </View>
-        }
-      />
+      {/* Skeleton while initial load */}
+      {loading ? (
+        <View style={styles.skeletonList}>
+          <SkeletonCard />
+          <SkeletonCard />
+          <SkeletonCard />
+        </View>
+      ) : (
+        <FlatList
+          data={drives}
+          renderItem={renderDriveCard}
+          keyExtractor={(item) => item.id}
+          contentContainerStyle={styles.listContent}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+          }
+          onEndReached={onEndReached}
+          onEndReachedThreshold={0.4}
+          ListFooterComponent={renderFooter}
+          ListEmptyComponent={
+            <View style={styles.emptyState}>
+              <Ionicons name="car-sport-outline" size={64} color="#ddd" />
+              <Text style={styles.emptyText}>No drives yet</Text>
+              <Text style={styles.emptySubtext}>
+                Be the first to share a drive!{'\n'}Tap the + tab to start recording.
+              </Text>
+              <TouchableOpacity
+                style={styles.emptyButton}
+                onPress={() => router.push('/(tabs)/create')}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.emptyButtonText}>Start a Drive</Text>
+              </TouchableOpacity>
+            </View>
+          }
+        />
+      )}
 
-      {/* Comments Modal */}
       {selectedDriveId && (
         <CommentsModal
           driveId={selectedDriveId}
@@ -217,10 +273,7 @@ export default function FeedScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#fff',
-  },
+  container: { flex: 1, backgroundColor: '#fff' },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -230,15 +283,10 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#f0f0f0',
   },
-  headerTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    letterSpacing: 2,
-  },
-  listContent: {
-    padding: 16,
-    gap: 16,
-  },
+  headerTitle: { fontSize: 20, fontWeight: 'bold', letterSpacing: 2 },
+  listContent: { padding: 16, gap: 16, paddingBottom: 32 },
+
+  // Cards
   card: {
     backgroundColor: '#fff',
     borderRadius: 12,
@@ -246,79 +294,43 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#f0f0f0',
   },
-  authorHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 12,
-    gap: 8,
+  authorHeader: { flexDirection: 'row', alignItems: 'center', padding: 12, gap: 8 },
+  authorAvatar: { width: 32, height: 32, borderRadius: 16, backgroundColor: '#f0f0f0' },
+  authorName: { fontWeight: '600', fontSize: 14 },
+  driveImage: { width: '100%', height: 240 },
+  driveImagePlaceholder: {
+    width: '100%', height: 240,
+    backgroundColor: '#f5f5f5',
+    justifyContent: 'center', alignItems: 'center',
   },
-  authorAvatar: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+  driveInfo: { padding: 12 },
+  driveTitle: { fontSize: 18, fontWeight: 'bold', marginBottom: 4 },
+  driveDescription: { fontSize: 14, color: '#666', marginBottom: 8 },
+  ratingContainer: { flexDirection: 'row', gap: 2, marginBottom: 8 },
+  tagsContainer: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  tag: { backgroundColor: '#f0f0f0', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 },
+  tagText: { fontSize: 12, color: '#666' },
+
+  // Pagination footer
+  footerLoader: { paddingVertical: 20, alignItems: 'center' },
+
+  // Empty state
+  emptyState: { alignItems: 'center', paddingVertical: 64, paddingHorizontal: 32 },
+  emptyText: { fontSize: 20, fontWeight: '700', color: '#333', marginTop: 16, marginBottom: 8 },
+  emptySubtext: { fontSize: 15, color: '#999', textAlign: 'center', lineHeight: 22, marginBottom: 32 },
+  emptyButton: {
+    backgroundColor: '#000', borderRadius: 12,
+    paddingVertical: 14, paddingHorizontal: 32,
   },
-  authorAvatarPlaceholder: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: '#f0f0f0',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  authorName: {
-    fontWeight: '600',
-    fontSize: 14,
-  },
-  driveImage: {
-    width: '100%',
-    height: 240,
-    resizeMode: 'cover',
-  },
-  driveInfo: {
-    padding: 12,
-  },
-  driveTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    marginBottom: 4,
-  },
-  driveDescription: {
-    fontSize: 14,
-    color: '#666',
-    marginBottom: 8,
-  },
-  ratingContainer: {
-    flexDirection: 'row',
-    gap: 2,
-    marginBottom: 8,
-  },
-  tagsContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  tag: {
-    backgroundColor: '#f0f0f0',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
-  },
-  tagText: {
-    fontSize: 12,
-    color: '#666',
-  },
-  emptyState: {
-    alignItems: 'center',
-    paddingVertical: 64,
-  },
-  emptyText: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#666',
-  },
-  emptySubtext: {
-    fontSize: 14,
-    color: '#999',
-    marginTop: 4,
-  },
+  emptyButtonText: { color: '#fff', fontSize: 16, fontWeight: '700' },
+
+  // Skeletons
+  skeletonList: { padding: 16, gap: 16 },
+  skeletonHeader: { flexDirection: 'row', alignItems: 'center', padding: 12, gap: 8 },
+  skeletonAvatar: { width: 32, height: 32, borderRadius: 16, backgroundColor: '#EFEFEF' },
+  skeletonName: { width: 100, height: 14, borderRadius: 7, backgroundColor: '#EFEFEF' },
+  skeletonImage: { width: '100%', height: 240, backgroundColor: '#EFEFEF' },
+  skeletonBody: { padding: 12, gap: 8 },
+  skeletonTitle: { width: '60%', height: 18, borderRadius: 9, backgroundColor: '#EFEFEF' },
+  skeletonSubtitle: { width: '40%', height: 14, borderRadius: 7, backgroundColor: '#EFEFEF' },
 });

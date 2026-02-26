@@ -20,12 +20,23 @@
       "buildNumber": "1.0.0",
       "infoPlist": {
         "NSLocationWhenInUseUsageDescription": "Tarmac uses your location to show drives near you.",
-        "NSLocationAlwaysUsageDescription": "Tarmac uses your location to track your drives."
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "Tarmac records your GPS route while you drive, even when the screen is locked.",
+        "NSLocationAlwaysUsageDescription": "Tarmac records your GPS route while you drive, even when the screen is locked.",
+        "UIBackgroundModes": [
+          "location"
+        ]
       }
     },
     "plugins": [
       "expo-router",
-      "expo-secure-store"
+      "expo-secure-store",
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "Tarmac records your GPS route while you drive, even when the screen is locked.",
+          "isIosBackgroundLocationEnabled": true
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true
