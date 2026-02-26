@@ -14,7 +14,23 @@
       "Bash(SUPABASE_ACCESS_TOKEN=sbp_4484c10ade2422f9f4ae07c8196e7b7433a2cd1a /tmp/supabase functions deploy delete-account --project-ref tfuvogiayixbeclcbiuc --workdir \"/Users/nicholasdaras/Documents/Documents - Nicholas''s Mac mini/Development/Projects/Tarmac\")",
       "Bash(grep:*)",
       "Bash(ls:*)",
-      "Read(//Users/nicholasdaras/Documents/Documents - Nicholas’s Mac mini/Development/Projects/Tarmac/**)"
+      "Read(//Users/nicholasdaras/Documents/Documents - Nicholas’s Mac mini/Development/Projects/Tarmac/**)",
+      "Bash(gem install:*)",
+      "Bash(brew:*)",
+      "Bash(rbenv versions:*)",
+      "Bash(ruby:*)",
+      "Bash(sh)",
+      "Bash(~/.local/bin/mise install:*)",
+      "Bash(# Try downloading a pre-built Ruby binary for arm64 macOS # Use the ruby-install approach via the standalone tarball curl -fsSL https://github.com/rbenv/ruby-build/releases/latest/download/ruby-build-*.tar.gz)",
+      "Bash(~/.local/share/mise/installs/ruby/3.2.10/bin/ruby:*)",
+      "Bash(pod:*)",
+      "Bash(node:*)",
+      "Bash(xcode-select:*)",
+      "Bash(xcodebuild:*)",
+      "Bash(sudo xcode-select:*)"
+    ],
+    "additionalDirectories": [
+      "/Users/nicholasdaras/.claude/projects/-Users-nicholasdaras-Documents-Documents---Nicholas-s-Mac-mini-Development-Projects-Tarmac/memory"
     ]
   }
 }
